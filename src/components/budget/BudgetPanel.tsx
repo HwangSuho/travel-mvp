@@ -19,18 +19,26 @@ const DEFAULT_BUDGET = {
 };
 
 function parseDate(dateString: string) {
-  const [year, month, day] = dateString.split("-").map(Number);
+  if (!dateString) return null;
+  const normalized = dateString
+    .trim()
+    .replace(/\s+/g, "")
+    .replace(/\./g, "-");
+  const parts = normalized.split("-");
+  if (parts.length !== 3) return null;
+  const [year, month, day] = parts.map(Number);
+  if ([year, month, day].some((value) => Number.isNaN(value))) return null;
   return new Date(year, month - 1, day);
 }
 
-function getTripDuration(dateRange: string) {
-  const [start, end] = dateRange.split(" - ");
+function getTripDuration(startDate?: string, endDate?: string) {
+  if (!startDate && !endDate) return 1;
+  const start = parseDate(startDate ?? "");
+  const end = parseDate(endDate ?? "");
   if (!start || !end) return 1;
-  const startDate = parseDate(start);
-  const endDate = parseDate(end);
   const diff = Math.max(
     1,
-    Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)) + 1
+    Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1
   );
   return diff;
 }
@@ -40,7 +48,7 @@ export default function BudgetPanel({ tripId, trip }: BudgetPanelProps) {
   const [budget, setBudget] = useState(trip.budget ?? DEFAULT_BUDGET);
   const [message, setMessage] = useState<string | null>(null);
 
-  const nights = getTripDuration(trip.dateRange);
+  const nights = getTripDuration(trip.startDate, trip.endDate);
 
   const total = useMemo(() => {
     const lodging = (budget.lodgingPerNight ?? 0) * nights;

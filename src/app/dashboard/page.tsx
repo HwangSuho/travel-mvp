@@ -8,27 +8,42 @@ import Tag from "@/components/ui/Tag";
 import type { Trip } from "@/types/trip";
 import { useTrips } from "@/context/TripContext";
 import NewTripForm from "@/components/dashboard/NewTripForm";
+import RequireAuth from "@/components/auth/RequireAuth";
 
-const statusLabel: Record<Trip["status"], string> = {
+const statusLabel: Record<NonNullable<Trip["status"]>, string> = {
   draft: "작성 중",
   scheduled: "일정 예정",
   completed: "완료",
 };
 
-function TripCard({ trip }: { trip: Trip }) {
+const formatDateRange = (startDate?: string, endDate?: string) => {
+  if (!startDate && !endDate) return "여행일 미정";
+  if (!startDate || !endDate) return startDate || endDate || "";
+  return `${startDate} - ${endDate}`;
+};
+
+function TripCard({
+  trip,
+  onDelete,
+}: {
+  trip: Trip;
+  onDelete?: (tripId: string) => void;
+}) {
   return (
     <Card className="flex h-full flex-col gap-4 text-slate-900">
       <div className="flex items-start justify-between gap-4">
         <div>
           <h3 className="text-xl font-semibold">{trip.title}</h3>
-          <p className="text-sm text-slate-600">{trip.dateRange}</p>
+          <p className="text-sm text-slate-600">
+            {trip.destination} · {formatDateRange(trip.startDate, trip.endDate)}
+          </p>
         </div>
         <Tag className="bg-slate-100 text-slate-700">
-          {statusLabel[trip.status] || "-"}
+          {(trip.status && statusLabel[trip.status]) || "-"}
         </Tag>
       </div>
       <ul className="list-disc space-y-1 pl-5 text-sm text-slate-700">
-        {trip.highlights.map((item) => (
+        {(trip.highlights ?? []).map((item) => (
           <li key={item}>{item}</li>
         ))}
       </ul>
@@ -38,26 +53,39 @@ function TripCard({ trip }: { trip: Trip }) {
             편집하기 →
           </Button>
         </Link>
-        <Button
-          variant="secondary"
-          size="sm"
-          className="text-slate-900 hover:bg-slate-100"
-        >
-          공유 링크
-        </Button>
+        <Link href={`/share/${trip.publicSlug ?? trip.id}`} target="_blank">
+          <Button
+            variant="secondary"
+            size="sm"
+            className="text-slate-900 hover:bg-slate-100"
+          >
+            공유 링크
+          </Button>
+        </Link>
+        {onDelete && (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="text-slate-500 hover:bg-red-50 hover:text-red-600"
+            onClick={() => onDelete(trip.id)}
+          >
+            삭제
+          </Button>
+        )}
       </div>
     </Card>
   );
 }
 
 export default function DashboardPage() {
-  const { trips } = useTrips();
+  const { trips, deleteTrip } = useTrips();
   const [showNewTripForm, setShowNewTripForm] = useState(false);
   const upcomingTrips = trips.filter((trip) =>
-    ["draft", "scheduled"].includes(trip.status)
+    ["draft", "scheduled"].includes(trip.status ?? "")
   );
   const recentTrips = trips.filter((trip) => trip.status === "completed");
   return (
+    <RequireAuth>
     <main className="min-h-screen bg-gray-50 px-4 py-10">
       <div className="mx-auto flex max-w-5xl flex-col gap-8">
         <header className="space-y-2 text-slate-900">
@@ -92,7 +120,14 @@ export default function DashboardPage() {
           </div>
           <div className="grid gap-6 md:grid-cols-2">
             {upcomingTrips.map((trip) => (
-              <TripCard key={trip.id} trip={trip} />
+              <TripCard
+                key={trip.id}
+                trip={trip}
+                onDelete={(id) => {
+                  const confirmed = window.confirm("이 일정을 삭제하시겠습니까?");
+                  if (confirmed) deleteTrip(id);
+                }}
+              />
             ))}
           </div>
         </section>
@@ -105,11 +140,19 @@ export default function DashboardPage() {
           </div>
           <div className="grid gap-6 md:grid-cols-2">
             {recentTrips.map((trip) => (
-              <TripCard key={trip.id} trip={trip} />
+              <TripCard
+                key={trip.id}
+                trip={trip}
+                onDelete={(id) => {
+                  const confirmed = window.confirm("이 일정을 삭제하시겠습니까?");
+                  if (confirmed) deleteTrip(id);
+                }}
+              />
             ))}
           </div>
         </section>
       </div>
     </main>
+    </RequireAuth>
   );
 }

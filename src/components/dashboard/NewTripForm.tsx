@@ -15,15 +15,21 @@ const defaultStatus: Trip["status"] = "draft";
 export default function NewTripForm({ onClose }: NewTripFormProps) {
   const { addTrip, loading } = useTrips();
   const [title, setTitle] = useState("");
+  const [destination, setDestination] = useState("");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
+  const [summary, setSummary] = useState("");
+  const [budgetTotal, setBudgetTotal] = useState("");
   const [notes, setNotes] = useState("");
   const [error, setError] = useState<string | null>(null);
 
   const resetForm = () => {
     setTitle("");
+    setDestination("");
     setStartDate("");
     setEndDate("");
+    setSummary("");
+    setBudgetTotal("");
     setNotes("");
     setError(null);
   };
@@ -34,17 +40,31 @@ export default function NewTripForm({ onClose }: NewTripFormProps) {
       setError("여행 제목을 입력해 주세요.");
       return;
     }
+    if (!destination.trim()) {
+      setError("여행 목적지를 입력해 주세요.");
+      return;
+    }
     if (!startDate || !endDate) {
       setError("여행 시작일과 종료일을 선택해 주세요.");
       return;
     }
     setError(null);
 
-    const dateRange = `${startDate} - ${endDate}`;
+    const now = new Date().toISOString();
     const newTrip: Trip = {
-      id: `temp-${Date.now()}`,
+      id: `trip-${Date.now()}`,
+      userId: "anonymous-user",
       title: title.trim(),
-      dateRange,
+      destination: destination.trim(),
+      startDate,
+      endDate,
+      summary: summary.trim() || undefined,
+      budgetTotal: budgetTotal
+        ? Number(budgetTotal.replace(/[^0-9]/g, ""))
+        : undefined,
+      createdAt: now,
+      updatedAt: now,
+      publicSlug: `trip-${Date.now().toString(36)}`,
       status: defaultStatus,
       highlights: [],
       notes: notes
@@ -73,6 +93,17 @@ export default function NewTripForm({ onClose }: NewTripFormProps) {
             onChange={(event) => setTitle(event.target.value)}
           />
         </div>
+        <div>
+          <label className="mb-1 block text-sm font-semibold text-slate-900">
+            목적지
+          </label>
+          <input
+            className="w-full rounded-xl border border-slate-200 px-4 py-2 text-sm focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-100"
+            placeholder="예: Tokyo, Japan"
+            value={destination}
+            onChange={(event) => setDestination(event.target.value)}
+          />
+        </div>
         <div className="grid gap-4 sm:grid-cols-2">
           <div>
             <label className="mb-1 block text-sm font-semibold text-slate-900">
@@ -96,6 +127,31 @@ export default function NewTripForm({ onClose }: NewTripFormProps) {
               onChange={(event) => setEndDate(event.target.value)}
             />
           </div>
+        </div>
+        <div>
+          <label className="mb-1 block text-sm font-semibold text-slate-900">
+            요약 (선택)
+          </label>
+          <textarea
+            className="w-full rounded-xl border border-slate-200 px-4 py-2 text-sm focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-100"
+            rows={2}
+            placeholder="여행 목적이나 컨셉을 적어주세요."
+            value={summary}
+            onChange={(event) => setSummary(event.target.value)}
+          />
+        </div>
+        <div>
+          <label className="mb-1 block text-sm font-semibold text-slate-900">
+            전체 예산 (선택)
+          </label>
+          <input
+            className="w-full rounded-xl border border-slate-200 px-4 py-2 text-sm focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-100"
+            placeholder="예: 1200000"
+            value={budgetTotal}
+            onChange={(event) => setBudgetTotal(event.target.value)}
+            inputMode="numeric"
+          />
+          <p className="mt-1 text-xs text-slate-500">숫자만 입력해 주세요.</p>
         </div>
         <div>
           <label className="mb-1 block text-sm font-semibold text-slate-900">

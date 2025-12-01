@@ -17,6 +17,7 @@ import {
   updateTrip as updateTripRemote,
 } from "@/services/tripService";
 import { useAuth } from "@/context/AuthContext";
+import type { Block, Day } from "@/types/trip";
 
 type TripState = {
   trips: Trip[];
@@ -119,7 +120,17 @@ export function useTrips() {
   const addTrip = useCallback(
     async (trip: Trip) => {
       setLoading(true);
-      const created = await createTripRemote(trip, user?.uid);
+      const now = new Date().toISOString();
+      const created = await createTripRemote(
+        {
+          ...trip,
+          userId: trip.userId || user?.uid || "anonymous-user",
+          createdAt: trip.createdAt || now,
+          updatedAt: now,
+          publicSlug: trip.publicSlug || trip.id,
+        },
+        user?.uid
+      );
       dispatch({ type: "addTrip", payload: created });
       dispatch({ type: "selectTrip", payload: { id: created.id } });
       setLoading(false);
@@ -130,7 +141,10 @@ export function useTrips() {
   const updateTrip = useCallback(
     async (trip: Trip) => {
       setLoading(true);
-      const updated = await updateTripRemote(trip, user?.uid);
+      const updated = await updateTripRemote(
+        { ...trip, updatedAt: new Date().toISOString() },
+        user?.uid
+      );
       dispatch({ type: "updateTrip", payload: updated });
       setLoading(false);
     },
@@ -154,36 +168,56 @@ export function useTrips() {
         name: string;
         formattedAddress?: string;
         location?: { lat: number; lng: number };
+        placeId?: string;
+        rating?: number;
       }
     ) => {
       const targetTrip = state.trips.find((trip) => trip.id === tripId);
       if (!targetTrip) return;
 
       const existingDays = targetTrip.days ?? [];
-      const firstDayDate = existingDays[0]?.date ?? new Date().toISOString().split("T")[0];
-      const scheduleItem = {
-        time: "미정",
+      const firstDay = existingDays[0];
+      const fallbackDate =
+        targetTrip.startDate || new Date().toISOString().split("T")[0];
+      const dayId = firstDay?.id ?? `${tripId}-day-${fallbackDate}`;
+
+      const newBlock: Block = {
+        id: `block-${Date.now()}`,
+        tripId,
+        dayId,
+        startTime: "10:00",
+        endTime: "12:00",
         title: place.name,
         memo: place.formattedAddress ?? "추가된 장소",
-        location: place.location,
+        lat: place.location?.lat,
+        lng: place.location?.lng,
+        address: place.formattedAddress,
+        placeId: place.placeId,
+        rating: place.rating,
+        source: "USER",
       };
 
-      const updatedDays = existingDays.length
+      const updatedDays: Day[] = existingDays.length
         ? existingDays.map((day, index) =>
-            index === 0
-              ? { ...day, items: [...day.items, scheduleItem] }
+            day.id === dayId || index === 0
+              ? { ...day, blocks: [...(day.blocks ?? []), newBlock] }
               : day
           )
         : [
             {
-              date: firstDayDate,
-              items: [scheduleItem],
+              id: dayId,
+              tripId,
+              date: fallbackDate,
+              title: "",
+              summary: "",
+              blocks: [newBlock],
             },
           ];
 
       const updatedTrip: Trip = {
         ...targetTrip,
         days: updatedDays,
+        updatedAt: new Date().toISOString(),
       };
 
       dispatch({ type: "updateTrip", payload: updatedTrip });
@@ -203,6 +237,149 @@ export function useTrips() {
       const updatedTrip: Trip = {
         ...targetTrip,
         budget,
+        updatedAt: new Date().toISOString(),
+      };
+
+      dispatch({ type: "updateTrip", payload: updatedTrip });
+      await updateTripRemote(updatedTrip, user?.uid);
+    },
+    [state.trips, dispatch, user?.uid]
+  );
+
+  const addDay = useCallback(
+    async (
+      tripId: string,
+      day: {
+        date: string;
+        title?: string;
+        summary?: string;
+      }
+    ) => {
+      const targetTrip = state.trips.find((trip) => trip.id === tripId);
+      if (!targetTrip) return;
+
+      const newDay: Day = {
+        id: `day-${Date.now()}`,
+        tripId,
+        date: day.date,
+        title: day.title ?? "",
+        summary: day.summary ?? "",
+        budgetPlanned: targetTrip.budget?.dailyFood,
+        blocks: [],
+      };
+
+      const updatedTrip: Trip = {
+        ...targetTrip,
+        days: [...(targetTrip.days ?? []), newDay],
+        updatedAt: new Date().toISOString(),
+      };
+
+      dispatch({ type: "updateTrip", payload: updatedTrip });
+      await updateTripRemote(updatedTrip, user?.uid);
+    },
+    [state.trips, dispatch, user?.uid]
+  );
+
+  const addBlockToDay = useCallback(
+    async (
+      tripId: string,
+      dayId: string,
+      block: {
+        startTime: string;
+        endTime: string;
+        title: string;
+        memo?: string;
+        category?: Block["category"];
+      }
+    ) => {
+      const targetTrip = state.trips.find((trip) => trip.id === tripId);
+      if (!targetTrip) return;
+      const targetDayExists = (targetTrip.days ?? []).some((day) => day.id === dayId);
+      if (!targetDayExists) return;
+      const now = new Date().toISOString();
+      const updatedTrip: Trip = {
+        ...targetTrip,
+        days: (targetTrip.days ?? []).map((day) =>
+          day.id === dayId
+            ? {
+                ...day,
+                blocks: [
+                  ...(day.blocks ?? []),
+                  {
+                    id: `block-${Date.now()}`,
+                    tripId,
+                    dayId,
+                    startTime: block.startTime,
+                    endTime: block.endTime,
+                    title: block.title,
+                    memo: block.memo,
+                    category: block.category,
+                    source: "USER",
+                  },
+                ],
+              }
+            : day
+        ),
+        updatedAt: now,
+      };
+
+      dispatch({ type: "updateTrip", payload: updatedTrip });
+      await updateTripRemote(updatedTrip, user?.uid);
+    },
+    [state.trips, dispatch, user?.uid]
+  );
+
+  const updateBlock = useCallback(
+    async (
+      tripId: string,
+      dayId: string,
+      blockId: string,
+      patch: Partial<Block>
+    ) => {
+      const targetTrip = state.trips.find((trip) => trip.id === tripId);
+      if (!targetTrip) return;
+      const targetDayExists = (targetTrip.days ?? []).some((day) => day.id === dayId);
+      if (!targetDayExists) return;
+      const now = new Date().toISOString();
+      const updatedTrip: Trip = {
+        ...targetTrip,
+        days: (targetTrip.days ?? []).map((day) =>
+          day.id === dayId
+            ? {
+                ...day,
+                blocks: (day.blocks ?? []).map((block) =>
+                  block.id === blockId ? { ...block, ...patch } : block
+                ),
+              }
+            : day
+        ),
+        updatedAt: now,
+      };
+
+      dispatch({ type: "updateTrip", payload: updatedTrip });
+      await updateTripRemote(updatedTrip, user?.uid);
+    },
+    [state.trips, dispatch, user?.uid]
+  );
+
+  const deleteBlock = useCallback(
+    async (tripId: string, dayId: string, blockId: string) => {
+      const targetTrip = state.trips.find((trip) => trip.id === tripId);
+      if (!targetTrip) return;
+      const targetDayExists = (targetTrip.days ?? []).some((day) => day.id === dayId);
+      if (!targetDayExists) return;
+      const now = new Date().toISOString();
+      const updatedTrip: Trip = {
+        ...targetTrip,
+        days: (targetTrip.days ?? []).map((day) =>
+          day.id === dayId
+            ? {
+                ...day,
+                blocks: (day.blocks ?? []).filter((block) => block.id !== blockId),
+              }
+            : day
+        ),
+        updatedAt: now,
       };
 
       dispatch({ type: "updateTrip", payload: updatedTrip });
@@ -221,5 +398,9 @@ export function useTrips() {
     deleteTrip,
     addPlaceToTrip,
     updateBudget,
+    addDay,
+    addBlockToDay,
+    updateBlock,
+    deleteBlock,
   };
 }

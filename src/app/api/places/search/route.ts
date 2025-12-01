@@ -1,18 +1,24 @@
 import { NextResponse } from "next/server";
 
+const PLACES_ENDPOINT =
+  "https://maps.googleapis.com/maps/api/place/textsearch/json";
+
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const query = searchParams.get("query");
   const type = searchParams.get("type");
   const openNow = searchParams.get("openNow") === "true";
   const maxPrice = searchParams.get("maxPrice");
+  const lat = searchParams.get("lat");
+  const lng = searchParams.get("lng");
   const radius = searchParams.get("radius");
-  const locationLat = searchParams.get("lat");
-  const locationLng = searchParams.get("lng");
 
-  if (!query) {
+  const hasQuery = Boolean(query && query.trim());
+  const hasLocation = Boolean(lat && lng && radius);
+
+  if (!hasQuery && !hasLocation) {
     return NextResponse.json(
-      { error: "검색어를 입력해 주세요." },
+      { error: "검색어 또는 위치 좌표가 필요합니다." },
       { status: 400 }
     );
   }
@@ -28,48 +34,49 @@ export async function GET(request: Request) {
     );
   }
 
-  const endpoint = new URL("https://maps.googleapis.com/maps/api/place/textsearch/json");
-  if (locationLat && locationLng && radius) {
-    endpoint.searchParams.set("location", `${locationLat},${locationLng}`);
-    endpoint.searchParams.set("radius", radius);
-  } else {
-    endpoint.searchParams.set("query", query);
+  const endpoint = new URL(PLACES_ENDPOINT);
+  if (hasQuery) {
+    endpoint.searchParams.set("query", query!.trim());
   }
-  endpoint.searchParams.set("language", "ko");
-  endpoint.searchParams.set("key", apiKey);
+  if (hasLocation) {
+    endpoint.searchParams.set("location", `${lat},${lng}`);
+    endpoint.searchParams.set("radius", radius!);
+  }
   if (type) endpoint.searchParams.set("type", type);
   if (openNow) endpoint.searchParams.set("opennow", "true");
   if (maxPrice) endpoint.searchParams.set("maxprice", maxPrice);
+  endpoint.searchParams.set("language", "ko");
+  endpoint.searchParams.set("key", apiKey);
 
   try {
     const response = await fetch(endpoint.toString());
     if (!response.ok) {
       throw new Error("Google Places API 호출에 실패했습니다.");
     }
-    type GooglePlace = {
-      place_id: string;
-      name: string;
-      formatted_address?: string;
-      rating?: number;
-      user_ratings_total?: number;
-      price_level?: number;
-      opening_hours?: { open_now?: boolean };
-      types?: string[];
-      geometry?: { location?: { lat: number; lng: number } };
-    };
-    const data: { results?: GooglePlace[] } = await response.json();
+
+    const data = await response.json();
+
+    if (data.error_message) {
+      return NextResponse.json(
+        { error: data.error_message },
+        { status: 502 }
+      );
+    }
+
     const results =
-      data.results?.map((item) => ({
-        id: item.place_id,
-        name: item.name,
-        formattedAddress: item.formatted_address,
-        rating: item.rating,
-        reviews: item.user_ratings_total,
-        priceLevel: item.price_level,
-        openNow: item.opening_hours?.open_now ?? false,
-        types: item.types ?? [],
-        location: item.geometry?.location,
+      data.results?.map((item: any) => ({
+        placeId: item.place_id as string,
+        name: item.name as string,
+        lat: item.geometry?.location?.lat as number | undefined,
+        lng: item.geometry?.location?.lng as number | undefined,
+        rating: item.rating as number | undefined,
+        userRatingsTotal: item.user_ratings_total as number | undefined,
+        priceLevel: item.price_level as number | undefined,
+        address: item.formatted_address as string | undefined,
+        openNow: item.opening_hours?.open_now as boolean | undefined,
+        types: item.types as string[] | undefined,
       })) ?? [];
+
     return NextResponse.json({ results });
   } catch (error) {
     console.error(error);

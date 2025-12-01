@@ -4,12 +4,13 @@ import {
   deleteDoc,
   doc,
   getDocs,
+  limit,
   query,
   setDoc,
   where,
 } from "firebase/firestore";
 import { db } from "@/lib/firebase";
-import { mockTrips } from "@/data/mockTrips";
+import { mockPlanDetail, mockTrips } from "@/data/mockTrips";
 import type { Trip } from "@/types/trip";
 
 const COLLECTION_NAME = "trips";
@@ -17,6 +18,16 @@ const COLLECTION_NAME = "trips";
 const getCollection = () => collection(db, COLLECTION_NAME);
 const createFallbackId = () =>
   `trip-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+const normalizeTrip = (trip: Trip): Trip => {
+  const now = new Date().toISOString();
+  return {
+    ...trip,
+    createdAt: trip.createdAt || now,
+    updatedAt: trip.updatedAt || now,
+    userId: trip.userId || "anonymous-user",
+  };
+};
 
 export async function fetchTrips(userId?: string): Promise<Trip[]> {
   try {
@@ -32,7 +43,7 @@ export async function fetchTrips(userId?: string): Promise<Trip[]> {
 
     return snapshot.docs.map((docSnap) => {
       const data = docSnap.data() as Trip;
-      return { ...data, id: docSnap.id };
+      return normalizeTrip({ ...data, id: docSnap.id });
     });
   } catch (error) {
     console.warn("Firestore fetchTrips 실패, mock 데이터 사용", error);
@@ -44,15 +55,16 @@ export async function createTrip(
   trip: Trip,
   userId?: string
 ): Promise<Trip> {
+  const normalized = normalizeTrip(trip);
   try {
     const docRef = await addDoc(getCollection(), {
-      ...trip,
-      userId,
+      ...normalized,
+      userId: normalized.userId || userId,
     });
-    return { ...trip, id: docRef.id };
+    return { ...normalized, id: docRef.id };
   } catch (error) {
     console.warn("Firestore createTrip 실패, 임시 ID 사용", error);
-    return { ...trip, id: trip.id ?? createFallbackId() };
+    return { ...normalized, id: trip.id ?? createFallbackId() };
   }
 }
 
@@ -60,12 +72,17 @@ export async function updateTrip(
   trip: Trip,
   userId?: string
 ): Promise<Trip> {
+  const normalized = normalizeTrip(trip);
   try {
-    await setDoc(doc(db, COLLECTION_NAME, trip.id), { ...trip, userId }, { merge: true });
-    return trip;
+    await setDoc(
+      doc(db, COLLECTION_NAME, normalized.id),
+      { ...normalized, userId: normalized.userId || userId },
+      { merge: true }
+    );
+    return normalized;
   } catch (error) {
     console.warn("Firestore updateTrip 실패", error);
-    return trip;
+    return normalized;
   }
 }
 
@@ -75,4 +92,28 @@ export async function deleteTrip(id: string): Promise<void> {
   } catch (error) {
     console.warn("Firestore deleteTrip 실패", error);
   }
+}
+
+export async function fetchTripBySlug(slug: string): Promise<Trip | null> {
+  try {
+    const snapshot = await getDocs(
+      query(getCollection(), where("publicSlug", "==", slug), limit(1))
+    );
+
+    if (!snapshot.empty) {
+      const docSnap = snapshot.docs[0];
+      const data = docSnap.data() as Trip;
+      return normalizeTrip({ ...data, id: docSnap.id });
+    }
+  } catch (error) {
+    console.warn("Firestore fetchTripBySlug 실패, mock 데이터로 대체", error);
+  }
+
+  const mock =
+    mockTrips.find((trip) => trip.publicSlug === slug || trip.id === slug) ||
+    (mockPlanDetail.publicSlug === slug || mockPlanDetail.id === slug
+      ? mockPlanDetail
+      : null);
+
+  return mock ? normalizeTrip(mock) : null;
 }

@@ -3,15 +3,16 @@
 import { useCallback, useState } from "react";
 
 export type PlaceResult = {
-  id: string;
+  placeId: string;
   name: string;
-  formattedAddress?: string;
+  lat?: number;
+  lng?: number;
   rating?: number;
-  reviews?: number;
+  userRatingsTotal?: number;
   priceLevel?: number;
+  address?: string;
   openNow?: boolean;
   types?: string[];
-  location?: { lat: number; lng: number };
 };
 
 type SearchOptions = {

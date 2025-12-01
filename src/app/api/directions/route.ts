@@ -44,12 +44,26 @@ export async function GET(request: Request) {
     const data = await response.json();
     const route = data.routes?.[0];
     const leg = route?.legs?.[0];
+
+    if (!route || !leg) {
+      return NextResponse.json(
+        { error: "경로를 찾을 수 없습니다." },
+        { status: 404 }
+      );
+    }
+
+    const stepsSummary =
+      (leg.steps as Array<{ html_instructions?: string }> | undefined)?.map(
+        (step) => step.html_instructions?.replace(/<[^>]+>/g, "") ?? ""
+      ) ?? [];
+
     const result = {
-      summary: route?.summary ?? "",
-      distance: leg?.distance?.text ?? "",
-      duration: leg?.duration?.text ?? "",
-      warnings: route?.warnings ?? [],
+      distanceText: leg.distance?.text ?? "",
+      durationText: leg.duration?.text ?? "",
+      polyline: route.overview_polyline?.points ?? "",
+      stepsSummary,
     };
+
     return NextResponse.json({ route: result });
   } catch (error) {
     console.error(error);

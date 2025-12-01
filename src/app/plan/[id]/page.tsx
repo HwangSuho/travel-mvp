@@ -1,9 +1,15 @@
+import RequireAuth from "@/components/auth/RequireAuth";
 import PlanClient from "./PlanClient";
 
 type PlanPageProps = {
-  params: { id: string };
+  params: Promise<{ id: string }>;
 };
 
-export default function PlanPage({ params }: PlanPageProps) {
-  return <PlanClient tripId={params.id} />;
+export default async function PlanPage({ params }: PlanPageProps) {
+  const { id } = await params;
+  return (
+    <RequireAuth>
+      <PlanClient tripId={id} />
+    </RequireAuth>
+  );
 }
